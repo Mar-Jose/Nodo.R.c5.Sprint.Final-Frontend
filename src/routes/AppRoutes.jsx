@@ -14,9 +14,9 @@ function ProtectedRoute({ session, needsProfile = false, adultOnly = false, chil
 
 export default function AppRoutes({
   session,
-  authScreen,
-  profileSelectionScreen,
-  createProfileScreen,
+  authView,
+  profileSelectionView,
+  createProfileView,
   applicationShell,
   profiles,
   loadingProfiles,
@@ -36,7 +36,7 @@ export default function AppRoutes({
     </main>
   ) : profiles.length ? (
     <Navigate to={ROUTES.profiles} replace />
-  ) : createProfileScreen
+  ) : createProfileView
 
   return (
     <Routes>
@@ -45,11 +45,11 @@ export default function AppRoutes({
         path={ROUTES.auth}
         element={session.accountToken
           ? <Navigate to={getHomePath(session)} replace />
-          : authScreen}
+          : authView}
       />
       <Route
         path={ROUTES.profiles}
-        element={<ProtectedRoute session={session}>{profileSelectionScreen}</ProtectedRoute>}
+        element={<ProtectedRoute session={session}>{profileSelectionView}</ProtectedRoute>}
       />
       <Route
         path={ROUTES['create-profile']}

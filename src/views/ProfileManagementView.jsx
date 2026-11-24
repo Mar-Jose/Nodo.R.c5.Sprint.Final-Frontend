@@ -15,7 +15,7 @@ const emptyForm = {
   pin: '',
 }
 
-export default function ProfileManagement({
+export default function ProfileManagementView({
   activeProfileId,
   loading,
   loadError,

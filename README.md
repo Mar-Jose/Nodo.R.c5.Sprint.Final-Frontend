@@ -28,6 +28,8 @@ Route declarations and guards live in `src/routes/AppRoutes.jsx`; path constants
 
 Catalog state and requests are managed by `src/hooks/useCatalog.js`, and profile-scoped Watchlist state and requests by `src/hooks/useWatchlist.js`. Both reuse `src/api.js`; persistence and business rules remain in the backend.
 
-Presentation is separated into `src/components/catalog/SeriesCatalog.jsx`, `src/components/search/SearchBar.jsx`, `src/components/cards/MediaCard.jsx`, and `src/components/watchlist/WatchlistView.jsx`. The catalog and Watchlist reuse the same card.
+Presentation is separated into `src/components/catalog/SeriesCatalog.jsx`, `src/components/search/SearchBar.jsx`, and `src/components/cards/MediaCard.jsx`. Catalog and Watchlist views reuse the same card.
+
+Page-level screens live in `src/views/`: authentication, profile creation/selection/management, catalog, and Watchlist. Their styles continue to use the shared rules in `src/index.css`.
 
 Frontend redirects improve navigation, but the backend API remains responsible for validating JWTs and authorizing operations. In production, configure the web server to serve `index.html` for application routes so direct links work.

@@ -1,4 +1,4 @@
-import MediaCard from '../cards/MediaCard.jsx'
+import MediaCard from '../components/cards/MediaCard.jsx'
 
 export default function WatchlistView({
   error,

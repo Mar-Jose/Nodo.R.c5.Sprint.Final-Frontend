@@ -1,28 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { authApi, profilesApi } from './api.js'
-import SeriesCatalog from './components/catalog/SeriesCatalog.jsx'
-import ProfileManagement from './components/ProfileManagement.jsx'
-import WatchlistView from './components/watchlist/WatchlistView.jsx'
 import useCatalog from './hooks/useCatalog.js'
 import useWatchlist from './hooks/useWatchlist.js'
 import AppRoutes from './routes/AppRoutes.jsx'
 import { getScreenFromPath, ROUTES } from './routes/routeConfig.js'
 import plainText from './utils/plainText.js'
+import { getProfileId } from './utils/profile.js'
+import AuthView from './views/AuthView.jsx'
+import CatalogView from './views/CatalogView.jsx'
+import CreateProfileView from './views/CreateProfileView.jsx'
+import ProfileManagementView from './views/ProfileManagementView.jsx'
+import ProfileSelectionView from './views/ProfileSelectionView.jsx'
+import WatchlistView from './views/WatchlistView.jsx'
 
 const SESSION_KEYS = {
   account: 'nodo.accountToken',
   profileToken: 'nodo.profileToken',
   profile: 'nodo.activeProfile',
 }
-
-const PROFILE_TYPE_LABELS = {
-  adult: 'Adulto',
-  child: 'Infantil',
-  family: 'Familiar',
-}
-
-const getProfileId = (profile) => profile?._id || profile?.id
 
 function readSession() {
   const accountToken = localStorage.getItem(SESSION_KEYS.account)
@@ -278,168 +274,56 @@ function App() {
     setLoadingProfiles(false)
   }
 
-  const authScreen = (
-    <main className="auth-page">
-        <a className="brand auth-brand" href="/" aria-label="Nodo, inicio">NODO<span>+</span></a>
-        <form className="auth-card" onSubmit={handleAuth}>
-          <p className="eyebrow">TU PRÓXIMA HISTORIA</p>
-          <h1>{registering ? 'Crea tu cuenta' : 'Bienvenido de nuevo'}</h1>
-          <p className="muted">
-            {registering ? 'Un lugar para guardar lo que quieres ver.' : 'Inicia sesión para continuar.'}
-          </p>
-          <label>
-            Correo electrónico
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </label>
-          <label>
-            Contraseña
-            <input
-              type="password"
-              autoComplete={registering ? 'new-password' : 'current-password'}
-              minLength="8"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-            {registering && <span className="field-note">Mínimo 8 caracteres.</span>}
-          </label>
-          {error && <p className="error-message" role="alert">{error}</p>}
-          <button className="primary-button full-width" type="submit" disabled={busy}>
-            {busy ? 'Un momento…' : registering ? 'Crear cuenta' : 'Iniciar sesión'}
-          </button>
-          <p className="switch-auth">
-            {registering ? '¿Ya tienes una cuenta?' : '¿Aún no tienes cuenta?'}
-            {' '}
-            <button type="button" className="text-button" onClick={() => {
-              setRegistering((value) => !value)
-              setError('')
-            }}>
-              {registering ? 'Inicia sesión' : 'Regístrate'}
-            </button>
-          </p>
-        </form>
-        <p className="auth-footer">Tu cine, a tu manera.</p>
-    </main>
+  const authView = (
+    <AuthView
+      busy={busy}
+      email={email}
+      error={error}
+      onEmailChange={setEmail}
+      onPasswordChange={setPassword}
+      onSubmit={handleAuth}
+      onToggleRegister={() => {
+        setRegistering((value) => !value)
+        setError('')
+      }}
+      password={password}
+      registering={registering}
+    />
   )
 
-  const createProfileScreen = (
-    <main className="auth-page">
-        <a className="brand auth-brand" href="/" aria-label="Nodo, inicio">NODO<span>+</span></a>
-        <form className="auth-card" onSubmit={handleBootstrap}>
-          <p className="eyebrow">PRIMER PASO</p>
-          <h1>Crea tu perfil</h1>
-          <p className="muted">Elige un nombre y un PIN de 4 dígitos para protegerlo.</p>
-          <label>
-            Nombre del perfil
-            <input
-              value={profileName}
-              onChange={(event) => setProfileName(event.target.value)}
-              minLength="2"
-              maxLength="50"
-              required
-            />
-          </label>
-          <label>
-            PIN
-            <input
-              inputMode="numeric"
-              pattern="[0-9]{4}"
-              maxLength="4"
-              value={bootstrapPin}
-              onChange={(event) => setBootstrapPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
-              required
-            />
-          </label>
-          {error && <p className="error-message" role="alert">{error}</p>}
-          <button className="primary-button full-width" type="submit" disabled={busy}>
-            {busy ? 'Creando perfil…' : 'Crear y continuar'}
-          </button>
-          <button type="button" className="text-button back-button" onClick={logout}>
-            Cerrar sesión
-          </button>
-        </form>
-    </main>
+  const createProfileView = (
+    <CreateProfileView
+      bootstrapPin={bootstrapPin}
+      busy={busy}
+      error={error}
+      onBootstrapPinChange={setBootstrapPin}
+      onLogout={logout}
+      onProfileNameChange={setProfileName}
+      onSubmit={handleBootstrap}
+      profileName={profileName}
+    />
   )
 
-  const profileSelectionScreen = (
-    <main className="profile-page">
-        <header className="topbar">
-          <a className="brand" href="/" aria-label="Nodo, inicio">NODO<span>+</span></a>
-          <button className="text-button" type="button" onClick={logout}>Cerrar sesión</button>
-        </header>
-        <section className="profile-content">
-          <p className="eyebrow">¿QUIÉN ESTÁ VIENDO?</p>
-          <h1>Elige tu perfil</h1>
-          <p className="muted">Cada perfil tiene su propia lista y recomendaciones.</p>
-          <div className="profile-grid" aria-live="polite">
-            {loadingProfiles ? (
-              <p className="profile-state">Cargando tus perfiles…</p>
-            ) : profiles.map((profile) => (
-              <button
-                className={`profile-card ${getProfileId(selectedProfile) === getProfileId(profile) ? 'selected' : ''}`}
-                key={getProfileId(profile)}
-                type="button"
-                aria-pressed={getProfileId(selectedProfile) === getProfileId(profile)}
-                onClick={() => {
-                  setSelectedProfile(profile)
-                  setProfilePin('')
-                  setError('')
-                }}
-              >
-                <span className={`avatar avatar-${profile.type}`}>
-                  {profile.avatar
-                    ? <img src={profile.avatar} alt="" />
-                  : profile.name?.slice(0, 1).toUpperCase()}
-                </span>
-                <span>{profile.name}</span>
-              <small>{PROFILE_TYPE_LABELS[profile.type] || 'Otro'}</small>
-              </button>
-            ))}
-          </div>
-          {selectedProfile && (
-            <form className="pin-form" onSubmit={handleActivateProfile}>
-              <label htmlFor="profile-pin">PIN de {selectedProfile.name}</label>
-              <div className="pin-row">
-                <input
-                  id="profile-pin"
-                  inputMode="numeric"
-                  pattern="[0-9]{4}"
-                  maxLength="4"
-                  value={profilePin}
-                  onChange={(event) => setProfilePin(event.target.value.replace(/\D/g, '').slice(0, 4))}
-                  autoFocus
-                  required
-                />
-                <button className="primary-button" type="submit" disabled={busy}>
-                  {busy ? 'Verificando…' : 'Entrar'}
-                </button>
-              </div>
-            </form>
-          )}
-          {profilesError && (
-            <div className="profile-load-error">
-              <p className="error-message centered" role="alert">{profilesError}</p>
-              <button
-                type="button"
-                className="text-button"
-                  onClick={retryProfileLoad}
-              >
-                Reintentar
-              </button>
-            </div>
-          )}
-          {error && <p className="error-message centered" role="alert">{error}</p>}
-          <button type="button" className="text-button manage-link" onClick={logout}>
-            Cambiar de cuenta
-          </button>
-        </section>
-    </main>
+  const profileSelectionView = (
+    <ProfileSelectionView
+      busy={busy}
+      error={error}
+      getProfileId={getProfileId}
+      loading={loadingProfiles}
+      onActivate={handleActivateProfile}
+      onChooseProfile={(profile) => {
+        setSelectedProfile(profile)
+        setProfilePin('')
+        setError('')
+      }}
+      onLogout={logout}
+      onPinChange={setProfilePin}
+      onRetry={retryProfileLoad}
+      profilePin={profilePin}
+      profiles={profiles}
+      profilesError={profilesError}
+      selectedProfile={selectedProfile}
+    />
   )
 
   const applicationShell = (
@@ -495,42 +379,27 @@ function App() {
 
       <main>
         {screen === 'catalog' ? (
-          <>
-            <section className="welcome-banner">
-              <div className="banner-copy">
-                <p className="eyebrow">HECHO PARA {session.profile?.name?.toUpperCase()}</p>
-                <h1>Tu próxima historia<br />empieza aquí.</h1>
-                <p>Explora series, encuentra algo nuevo y guárdalo para después.</p>
-                <a className="banner-link" href="#catalog">Explorar catálogo <span aria-hidden="true">↓</span></a>
-              </div>
-              <div className="banner-art" aria-hidden="true">
-                <span className="art-orbit orbit-one" />
-                <span className="art-orbit orbit-two" />
-                <span className="art-star">✳</span>
-                <span className="art-caption">PLAY<br /><b>YOUR</b><br />STORY</span>
-              </div>
-            </section>
-            <SeriesCatalog
-              error={error}
-              isSaved={isSaved}
-              loading={loadingShows}
-              loadingWatchlist={loadingWatchlist}
-              onChangePage={loadCatalog}
-              onOpenDetails={openDetails}
-              onRetryWatchlist={retryWatchlistLoad}
-              onSearch={handleSearch}
-              onSearchTextChange={setSearchText}
-              onSearchYearChange={setSearchYear}
-              onToggleWatchlist={toggleWatchlist}
-              page={page}
-              searchText={searchText}
-              searchYear={searchYear}
-              shows={shows}
-              watchlistReady={watchlistReady}
-            />
-          </>
+          <CatalogView
+            profileName={session.profile?.name}
+            error={error}
+            isSaved={isSaved}
+            loading={loadingShows}
+            loadingWatchlist={loadingWatchlist}
+            onChangePage={loadCatalog}
+            onOpenDetails={openDetails}
+            onRetryWatchlist={retryWatchlistLoad}
+            onSearch={handleSearch}
+            onSearchTextChange={setSearchText}
+            onSearchYearChange={setSearchYear}
+            onToggleWatchlist={toggleWatchlist}
+            page={page}
+            searchText={searchText}
+            searchYear={searchYear}
+            shows={shows}
+            watchlistReady={watchlistReady}
+          />
         ) : screen === 'manage-profiles' ? (
-          <ProfileManagement
+          <ProfileManagementView
             activeProfileId={getProfileId(session.profile)}
             loading={loadingProfiles}
             loadError={profilesError}
@@ -618,9 +487,9 @@ function App() {
   return (
     <AppRoutes
       session={session}
-      authScreen={authScreen}
-      profileSelectionScreen={profileSelectionScreen}
-      createProfileScreen={createProfileScreen}
+      authView={authView}
+      profileSelectionView={profileSelectionView}
+      createProfileView={createProfileView}
       applicationShell={applicationShell}
       profiles={profiles}
       loadingProfiles={loadingProfiles}
