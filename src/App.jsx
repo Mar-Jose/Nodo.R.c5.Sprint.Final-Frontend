@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { authApi, profilesApi } from './api.js'
+import SeriesCatalog from './components/catalog/SeriesCatalog.jsx'
 import ProfileManagement from './components/ProfileManagement.jsx'
+import WatchlistView from './components/watchlist/WatchlistView.jsx'
 import useCatalog from './hooks/useCatalog.js'
 import useWatchlist from './hooks/useWatchlist.js'
 import AppRoutes from './routes/AppRoutes.jsx'
 import { getScreenFromPath, ROUTES } from './routes/routeConfig.js'
+import plainText from './utils/plainText.js'
 
 const SESSION_KEYS = {
   account: 'nodo.accountToken',
@@ -37,19 +40,6 @@ function readSession() {
     profileToken,
     profile,
   }
-}
-
-function plainText(value = '') {
-  return value
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
-    .trim()
 }
 
 function App() {
@@ -552,55 +542,16 @@ function App() {
             profiles={profiles}
           />
         ) : (
-          <section className="watchlist-section">
-            <p className="eyebrow">TU COLECCIÓN PERSONAL</p>
-            <h1>Mi lista</h1>
-            <p className="muted">Las series que guardaste para ver más tarde.</p>
-            {error && <p className="error-message" role="alert">{error}</p>}
-            {loadingWatchlist ? (
-              <div className="loading-state"><span className="spinner" />Cargando tu lista…</div>
-            ) : watchlist.length ? (
-              <div className="media-grid">
-                {watchlist.map((item) => (
-                  <MediaCard
-                    key={item._id || item.id}
-                    show={{
-                      id: item.externalId,
-                      name: item.title,
-                      image: { medium: item.posterUrl },
-                      summary: item.overview,
-                      premiered: item.releaseDate,
-                      genres: item.genres || [],
-                    }}
-                    saved
-                    onToggle={toggleWatchlist}
-                    onDetails={openDetails}
-                  />
-                ))}
-              </div>
-            ) : !watchlistReady ? (
-              <div className="empty-state">
-                <h3>No se pudo sincronizar tu lista</h3>
-                <p>Comprueba tu conexión e inténtalo de nuevo.</p>
-                <button type="button" className="primary-button" onClick={retryWatchlistLoad}>
-                  Reintentar
-                </button>
-              </div>
-            ) : (
-              <div className="empty-state">
-                <span className="empty-icon">＋</span>
-                <h3>Tu lista está esperando</h3>
-                <p>Guarda series desde el catálogo y aparecerán aquí.</p>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => navigateTo('catalog')}
-                >
-                  Explorar catálogo
-                </button>
-              </div>
-            )}
-          </section>
+          <WatchlistView
+            error={error}
+            loading={loadingWatchlist}
+            onBrowseCatalog={() => navigateTo('catalog')}
+            onDetails={openDetails}
+            onRetry={retryWatchlistLoad}
+            onToggle={toggleWatchlist}
+            watchlist={watchlist}
+            watchlistReady={watchlistReady}
+          />
         )}
       </main>
 
@@ -676,142 +627,6 @@ function App() {
       profilesError={profilesError}
       onRetryProfileLoad={retryProfileLoad}
     />
-  )
-}
-
-function SeriesCatalog({
-  error,
-  isSaved,
-  loading,
-  loadingWatchlist,
-  onChangePage,
-  onOpenDetails,
-  onRetryWatchlist,
-  onSearch,
-  onSearchTextChange,
-  onSearchYearChange,
-  onToggleWatchlist,
-  page,
-  searchText,
-  searchYear,
-  shows,
-  watchlistReady,
-}) {
-  return (
-    <section className="catalog-section" id="catalog">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">CATÁLOGO</p>
-          <h2>Descubre series</h2>
-        </div>
-        <form className="search-form" onSubmit={onSearch}>
-          <label className="search-field">
-            <span className="sr-only">Buscar serie</span>
-            <span aria-hidden="true">⌕</span>
-            <input
-              type="search"
-              placeholder="Buscar una serie…"
-              value={searchText}
-              onChange={(event) => onSearchTextChange(event.target.value)}
-            />
-          </label>
-          <input
-            className="year-input"
-            aria-label="Filtrar por año"
-            type="number"
-            min="1900"
-            max="2100"
-            placeholder="Año"
-            value={searchYear}
-            onChange={(event) => onSearchYearChange(event.target.value)}
-          />
-          <button className="primary-button search-button" type="submit">Buscar</button>
-        </form>
-      </div>
-      {error && <p className="error-message" role="alert">{error}</p>}
-      {!watchlistReady && (
-        <p className="watchlist-sync-message" role="status">
-          {loadingWatchlist
-            ? 'Sincronizando tu lista personal…'
-            : <>No se pudo sincronizar tu lista.{' '}
-              <button type="button" className="text-button" onClick={onRetryWatchlist}>
-                Reintentar
-              </button>
-            </>}
-        </p>
-      )}
-      {loading ? (
-        <div className="loading-state"><span className="spinner" />Cargando catálogo…</div>
-      ) : shows.length ? (
-        <>
-          <div className="media-grid">
-            {shows.map((show) => (
-              <MediaCard
-                key={show.id}
-                show={show}
-                saved={isSaved(show)}
-                onToggle={onToggleWatchlist}
-                onDetails={onOpenDetails}
-                saveDisabled={!watchlistReady}
-              />
-            ))}
-          </div>
-          {!searchText && (
-            <div className="pagination">
-              <button type="button" disabled={page === 0 || loading} onClick={() => onChangePage(page - 1)}>
-                Anterior
-              </button>
-              <span>Página {page + 1}</span>
-              <button type="button" disabled={loading} onClick={() => onChangePage(page + 1)}>
-                Siguiente
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="empty-state">
-          <span className="empty-icon">✳</span>
-          <h3>{searchText ? 'No encontramos resultados' : 'No hay series para mostrar'}</h3>
-          <p>{searchText ? 'Prueba con otro título o cambia el año.' : 'Vuelve a intentarlo en un momento.'}</p>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function MediaCard({ show, saved, onToggle, onDetails, saveDisabled = false }) {
-  const image = show.image?.medium || show.posterUrl
-  const description = plainText(show.summary || show.overview || 'Sin descripción disponible.')
-
-  return (
-    <article className="media-card">
-      <button className="poster-button" type="button" onClick={() => onDetails(show.id)}>
-        {image
-          ? <img className="poster" src={image} alt={`Póster de ${show.name || show.title}`} loading="lazy" />
-          : <span className="poster-placeholder">N<span>+</span></span>}
-        <span className="poster-overlay">Ver detalles <span aria-hidden="true">↗</span></span>
-      </button>
-      <div className="media-info">
-        <div className="media-title-row">
-          <h3>{show.name || show.title}</h3>
-          {show.rating?.average && <span className="rating">★ {show.rating.average}</span>}
-        </div>
-        <p className="media-meta">
-          {show.premiered?.slice(0, 4) || 'Año no disponible'}
-          {show.genres?.length ? ` · ${show.genres.slice(0, 2).join(' · ')}` : ''}
-        </p>
-        <p className="media-description">{description || 'Sin descripción disponible.'}</p>
-        <button
-          className={`save-button ${saved ? 'saved' : ''}`}
-          type="button"
-          onClick={() => onToggle(show)}
-          disabled={saveDisabled}
-        >
-          <span aria-hidden="true">{saved ? '✓' : '+'}</span>
-          {saveDisabled ? 'Sincronizando…' : saved ? 'En mi lista' : 'Agregar a mi lista'}
-        </button>
-      </div>
-    </article>
   )
 }
 
