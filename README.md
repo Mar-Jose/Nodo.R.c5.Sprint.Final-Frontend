@@ -14,3 +14,16 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+## Protected routes
+
+The application uses React Router with these routes:
+
+- `/login`: login and registration.
+- `/profiles` and `/profiles/create`: require an account session.
+- `/catalog` and `/watchlist`: require an account session and an active profile.
+- `/profiles/manage`: also requires an adult profile.
+
+Route declarations and guards live in `src/routes/AppRoutes.jsx`; path constants and screen lookup live in `src/routes/routeConfig.js`. `src/App.jsx` supplies the screens and application actions.
+
+Frontend redirects improve navigation, but the backend API remains responsible for validating JWTs and authorizing operations. In production, configure the web server to serve `index.html` for application routes so direct links work.
