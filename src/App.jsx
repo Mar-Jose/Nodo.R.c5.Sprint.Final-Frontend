@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { authApi, catalogApi, profilesApi, watchlistApi } from './api.js'
+import { authApi, profilesApi } from './api.js'
 import ProfileManagement from './components/ProfileManagement.jsx'
+import useCatalog from './hooks/useCatalog.js'
+import useWatchlist from './hooks/useWatchlist.js'
 import AppRoutes from './routes/AppRoutes.jsx'
 import { getScreenFromPath, ROUTES } from './routes/routeConfig.js'
 
@@ -72,36 +74,54 @@ function App() {
   const [profileName, setProfileName] = useState('')
   const [bootstrapPin, setBootstrapPin] = useState('')
   const [registering, setRegistering] = useState(false)
-  const [shows, setShows] = useState([])
-  const [watchlists, setWatchlists] = useState({})
-  const [loadingWatchlist, setLoadingWatchlist] = useState(
-    () => Boolean(localStorage.getItem(SESSION_KEYS.profileToken)),
-  )
-  const [watchlistLoadAttempt, setWatchlistLoadAttempt] = useState(0)
-  const [searchText, setSearchText] = useState('')
-  const [searchYear, setSearchYear] = useState('')
-  const [page, setPage] = useState(0)
-  const [details, setDetails] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [loadingShows, setLoadingShows] = useState(
-    () => Boolean(localStorage.getItem(SESSION_KEYS.profileToken)),
-  )
   const activeProfileId = getProfileId(session.profile)
-  const activeProfileKey = activeProfileId ? String(activeProfileId) : ''
-  const watchlist = activeProfileKey ? watchlists[activeProfileKey] || [] : []
-  const watchlistReady = Boolean(
-    activeProfileKey
-    && Object.prototype.hasOwnProperty.call(watchlists, activeProfileKey),
-  )
+  const catalog = useCatalog({
+    profileToken: session.profileToken,
+    screen,
+    setError,
+  })
+  const {
+    shows,
+    loading: loadingShows,
+    searchText,
+    setSearchText,
+    searchYear,
+    setSearchYear,
+    page,
+    details,
+    handleSearch,
+    loadCatalog,
+    openDetails,
+    closeDetails,
+    resetForProfile,
+    clearShows,
+  } = catalog
+  const watchlistState = useWatchlist({
+    profileToken: session.profileToken,
+    profileId: activeProfileId,
+    screen,
+    setError,
+  })
+  const {
+    watchlist,
+    ready: watchlistReady,
+    loading: loadingWatchlist,
+    toggleWatchlist,
+    isSaved,
+    reload: retryWatchlistLoad,
+    startLoading: startWatchlistLoading,
+    stopLoading: stopWatchlistLoading,
+    reset: resetWatchlists,
+  } = watchlistState
 
   const saveAccountToken = (token) => {
     localStorage.setItem(SESSION_KEYS.account, token)
     localStorage.removeItem(SESSION_KEYS.profileToken)
     localStorage.removeItem(SESSION_KEYS.profile)
     setProfiles([])
-    setWatchlists({})
-    setLoadingWatchlist(false)
+    resetWatchlists()
     setSelectedProfile(null)
     setProfilePin('')
     setLoadingProfiles(true)
@@ -115,11 +135,8 @@ function App() {
     localStorage.setItem(SESSION_KEYS.profile, JSON.stringify(profile))
     setSession((current) => ({ ...current, profileToken: token, profile }))
     navigateTo('catalog', { replace: true })
-    setPage(0)
-    setSearchText('')
-    setLoadingWatchlist(true)
-    setLoadingShows(true)
-    setError('')
+    resetForProfile()
+    startWatchlistLoading()
   }
 
   const handleAuth = async (event) => {
@@ -174,35 +191,6 @@ function App() {
     }
   }
 
-  const handleSearch = async (event) => {
-    event.preventDefault()
-    if (!searchText.trim()) {
-      setError('Escribe el nombre de una serie para buscar.')
-      return
-    }
-    setLoadingShows(true)
-    setError('')
-    try {
-      const result = await catalogApi.search(
-        session.profileToken,
-        searchText.trim(),
-        searchYear,
-      )
-      setShows(result.results || [])
-    } catch (requestError) {
-      setError(requestError.message)
-    } finally {
-      setLoadingShows(false)
-    }
-  }
-
-  const loadCatalog = async (nextPage) => {
-    setSearchText('')
-    setSearchYear('')
-    setLoadingShows(true)
-    setPage(nextPage)
-  }
-
   useEffect(() => {
     const isProfileSelection = screen === 'profiles'
     const isProfileManagement = screen === 'manage-profiles'
@@ -233,97 +221,6 @@ function App() {
     return () => { active = false }
   }, [session.accountToken, session.profileToken, screen, profileLoadAttempt, navigateTo])
 
-  useEffect(() => {
-    if (screen !== 'catalog' || !session.profileToken) return undefined
-    let active = true
-    catalogApi.list(session.profileToken, page)
-      .then((data) => {
-        if (active) setShows(Array.isArray(data) ? data : [])
-      })
-      .catch((requestError) => {
-        if (active) setError(requestError.message)
-      })
-      .finally(() => {
-        if (active) setLoadingShows(false)
-      })
-    return () => { active = false }
-  }, [screen, session.profileToken, page])
-
-  useEffect(() => {
-    if (
-      !['catalog', 'watchlist'].includes(screen)
-      || !session.profileToken
-      || !activeProfileKey
-    ) return undefined
-    let active = true
-    watchlistApi.list(session.profileToken)
-      .then((data) => {
-        if (active) {
-          setWatchlists((current) => ({
-            ...current,
-            [activeProfileKey]: Array.isArray(data) ? data : [],
-          }))
-        }
-      })
-      .catch((requestError) => {
-        if (active) setError(requestError.message)
-      })
-      .finally(() => {
-        if (active) {
-          setLoadingWatchlist(false)
-          setBusy(false)
-        }
-      })
-    return () => { active = false }
-  }, [screen, session.profileToken, activeProfileKey, watchlistLoadAttempt])
-
-  const toggleWatchlist = async (show) => {
-    if (!watchlistReady) {
-      setError('Espera a que la Watchlist del perfil termine de sincronizarse.')
-      return
-    }
-
-    const savedItem = watchlist.find(
-      (item) => String(item.externalId) === String(show.id),
-    )
-    const profileKey = activeProfileKey
-    const profileToken = session.profileToken
-    setError('')
-    try {
-      if (savedItem) {
-        await watchlistApi.remove(profileToken, savedItem._id || savedItem.id)
-        setWatchlists((current) => ({
-          ...current,
-          [profileKey]: (current[profileKey] || []).filter(
-            (item) => String(item._id || item.id) !== String(savedItem._id || savedItem.id),
-          ),
-        }))
-      } else {
-        const added = await watchlistApi.add(profileToken, show)
-        setWatchlists((current) => ({
-          ...current,
-          [profileKey]: [...(current[profileKey] || []), added],
-        }))
-      }
-    } catch (requestError) {
-      setError(requestError.message)
-    }
-  }
-
-  const openDetails = async (id) => {
-    setDetails({ loading: true, show: null, cast: [], episodes: [], error: '' })
-    try {
-      const [show, cast, episodes] = await Promise.all([
-        catalogApi.details(session.profileToken, id),
-        catalogApi.cast(session.profileToken, id),
-        catalogApi.episodes(session.profileToken, id),
-      ])
-      setDetails({ loading: false, show, cast, episodes, error: '' })
-    } catch (requestError) {
-      setDetails({ loading: false, show: null, cast: [], episodes: [], error: requestError.message })
-    }
-  }
-
   const logoutProfile = () => {
     localStorage.removeItem(SESSION_KEYS.profileToken)
     localStorage.removeItem(SESSION_KEYS.profile)
@@ -335,7 +232,7 @@ function App() {
     navigateTo('profiles', { replace: true })
     setSelectedProfile(null)
     setProfilePin('')
-    setLoadingWatchlist(false)
+    stopWatchlistLoading()
     setError('')
     setProfilesError('')
     setLoadingProfiles(true)
@@ -345,12 +242,6 @@ function App() {
     setLoadingProfiles(true)
     setProfilesError('')
     setProfileLoadAttempt((attempt) => attempt + 1)
-  }
-
-  const retryWatchlistLoad = () => {
-    setLoadingWatchlist(true)
-    setError('')
-    setWatchlistLoadAttempt((attempt) => attempt + 1)
   }
 
   const createManagedProfile = async (profile) => {
@@ -388,21 +279,14 @@ function App() {
     setSession({ accountToken: null, profileToken: null, profile: null })
     navigateTo('auth', { replace: true })
     setProfiles([])
-    setWatchlists({})
-    setLoadingWatchlist(false)
+    resetWatchlists()
     setSelectedProfile(null)
     setProfilePin('')
-    setShows([])
-    setWatchlists({})
-    setLoadingWatchlist(false)
+    clearShows()
     setError('')
     setProfilesError('')
     setLoadingProfiles(false)
   }
-
-  const isSaved = (show) => watchlist.some(
-    (item) => String(item.externalId) === String(show.id),
-  )
 
   const authScreen = (
     <main className="auth-page">
@@ -577,7 +461,7 @@ function App() {
             type="button"
             className={screen === 'catalog' ? 'active' : ''}
             onClick={() => {
-              setLoadingShows(true)
+              catalog.startLoading()
               setError('')
               navigateTo('catalog')
             }}
@@ -588,8 +472,7 @@ function App() {
             type="button"
             className={screen === 'watchlist' ? 'active' : ''}
             onClick={() => {
-              setBusy(true)
-              setError('')
+              retryWatchlistLoad()
               navigateTo('watchlist')
             }}
           >
@@ -674,7 +557,7 @@ function App() {
             <h1>Mi lista</h1>
             <p className="muted">Las series que guardaste para ver más tarde.</p>
             {error && <p className="error-message" role="alert">{error}</p>}
-            {busy ? (
+            {loadingWatchlist ? (
               <div className="loading-state"><span className="spinner" />Cargando tu lista…</div>
             ) : watchlist.length ? (
               <div className="media-grid">
@@ -728,7 +611,7 @@ function App() {
       </footer>
 
       {details && (
-        <div className="modal-backdrop" role="presentation" onClick={() => setDetails(null)}>
+        <div className="modal-backdrop" role="presentation" onClick={closeDetails}>
           <section
             className="details-modal"
             role="dialog"
@@ -736,7 +619,7 @@ function App() {
             aria-label={details.show?.name || 'Detalles de la serie'}
             onClick={(event) => event.stopPropagation()}
           >
-            <button className="modal-close" type="button" onClick={() => setDetails(null)} aria-label="Cerrar">
+            <button className="modal-close" type="button" onClick={closeDetails} aria-label="Cerrar">
               ×
             </button>
             {details.loading ? (

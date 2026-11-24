@@ -26,4 +26,6 @@ The application uses React Router with these routes:
 
 Route declarations and guards live in `src/routes/AppRoutes.jsx`; path constants and screen lookup live in `src/routes/routeConfig.js`. `src/App.jsx` supplies the screens and application actions.
 
+Catalog state and requests are managed by `src/hooks/useCatalog.js`, and profile-scoped Watchlist state and requests by `src/hooks/useWatchlist.js`. Both reuse `src/api.js`; persistence and business rules remain in the backend.
+
 Frontend redirects improve navigation, but the backend API remains responsible for validating JWTs and authorizing operations. In production, configure the web server to serve `index.html` for application routes so direct links work.
