@@ -1,3 +1,6 @@
+import { useForm } from 'react-hook-form'
+import { requiredPinValidationRules } from '../validations/profiles.js'
+
 const PROFILE_TYPE_LABELS = {
   adult: 'Adulto',
   child: 'Infantil',
@@ -11,14 +14,21 @@ export default function ProfileSelectionView({
   onActivate,
   onChooseProfile,
   onLogout,
-  onPinChange,
   onRetry,
-  profilePin,
   profiles,
   profilesError,
   selectedProfile,
   getProfileId,
 }) {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm()
+
+  const pinField = register('pin', requiredPinValidationRules)
+
   return (
     <main className="profile-page">
       <header className="topbar">
@@ -38,7 +48,10 @@ export default function ProfileSelectionView({
               key={getProfileId(profile)}
               type="button"
               aria-pressed={getProfileId(selectedProfile) === getProfileId(profile)}
-              onClick={() => onChooseProfile(profile)}
+              onClick={() => {
+                reset({ pin: '' })
+                onChooseProfile(profile)
+              }}
             >
               <span className={`avatar avatar-${profile.type}`}>
                 {profile.avatar
@@ -51,23 +64,31 @@ export default function ProfileSelectionView({
           ))}
         </div>
         {selectedProfile && (
-          <form className="pin-form" onSubmit={onActivate}>
+          <form className="pin-form" onSubmit={handleSubmit(onActivate)} noValidate>
             <label htmlFor="profile-pin">PIN de {selectedProfile.name}</label>
             <div className="pin-row">
               <input
                 id="profile-pin"
                 inputMode="numeric"
-                pattern="[0-9]{4}"
                 maxLength="4"
-                value={profilePin}
-                onChange={(event) => onPinChange(event.target.value.replace(/\D/g, '').slice(0, 4))}
                 autoFocus
-                required
+                aria-invalid={Boolean(errors.pin)}
+                aria-describedby={errors.pin ? 'profile-pin-error' : undefined}
+                {...pinField}
+                onChange={(event) => {
+                  event.target.value = event.target.value.replace(/\D/g, '').slice(0, 4)
+                  pinField.onChange(event)
+                }}
               />
               <button className="primary-button" type="submit" disabled={busy}>
                 {busy ? 'Verificando…' : 'Entrar'}
               </button>
             </div>
+            {errors.pin && (
+              <span className="validation-error" id="profile-pin-error" role="alert">
+                {errors.pin.message}
+              </span>
+            )}
           </form>
         )}
         {profilesError && (

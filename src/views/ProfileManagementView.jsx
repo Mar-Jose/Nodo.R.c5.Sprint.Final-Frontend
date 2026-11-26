@@ -1,4 +1,12 @@
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import {
+  avatarUrlValidationRules,
+  optionalPinValidationRules,
+  profileNameValidationRules,
+  profileTypeValidationRules,
+  requiredPinValidationRules,
+} from '../validations/profiles.js'
 
 const PROFILE_TYPE_LABELS = {
   adult: 'Adulto',
@@ -27,19 +35,29 @@ export default function ProfileManagementView({
   profiles,
 }) {
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm({ defaultValues: emptyForm })
+
+  const pinField = register(
+    'pin',
+    editingId ? optionalPinValidationRules : requiredPinValidationRules,
+  )
 
   const resetForm = () => {
     setEditingId(null)
-    setForm(emptyForm)
+    reset(emptyForm)
     setError('')
   }
 
   const editProfile = (profile) => {
     setEditingId(profileId(profile))
-    setForm({
+    reset({
       name: profile.name || '',
       type: profile.type || 'adult',
       avatar: profile.avatar || '',
@@ -48,23 +66,22 @@ export default function ProfileManagementView({
     setError('')
   }
 
-  const handleSubmit = async (event) => {
-    event.preventDefault()
+  const submitProfile = async (formValues) => {
     setSaving(true)
     setError('')
 
     const data = {
-      name: form.name.trim(),
-      type: form.type,
-      avatar: form.avatar.trim(),
+      name: formValues.name,
+      type: formValues.type,
+      avatar: formValues.avatar.trim(),
     }
-    if (form.pin) data.pin = form.pin
+    if (formValues.pin) data.pin = formValues.pin
 
     try {
       if (editingId) {
         await onUpdate(editingId, data)
       } else {
-        await onCreate({ ...data, pin: form.pin })
+        await onCreate({ ...data, pin: formValues.pin })
       }
       resetForm()
     } catch (requestError) {
@@ -109,23 +126,26 @@ export default function ProfileManagementView({
       )}
 
       <div className="profile-management-layout">
-        <form className="profile-management-form" onSubmit={handleSubmit}>
+        <form className="profile-management-form" onSubmit={handleSubmit(submitProfile)} noValidate>
           <h2>{editingId ? 'Editar perfil' : 'Crear perfil'}</h2>
           <label>
             Nombre
             <input
-              value={form.name}
-              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              minLength="2"
               maxLength="50"
-              required
+              aria-invalid={Boolean(errors.name)}
+              aria-describedby={errors.name ? 'managed-profile-name-error' : undefined}
+              {...register('name', profileNameValidationRules)}
             />
+            {errors.name && (
+              <span className="validation-error" id="managed-profile-name-error" role="alert">
+                {errors.name.message}
+              </span>
+            )}
           </label>
           <label>
             Tipo de perfil
             <select
-              value={form.type}
-              onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))}
+              {...register('type', profileTypeValidationRules)}
             >
               {Object.entries(PROFILE_TYPE_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
@@ -136,23 +156,34 @@ export default function ProfileManagementView({
             Avatar (URL, opcional)
             <input
               type="url"
-              value={form.avatar}
-              onChange={(event) => setForm((current) => ({ ...current, avatar: event.target.value }))}
+              aria-invalid={Boolean(errors.avatar)}
+              aria-describedby={errors.avatar ? 'managed-profile-avatar-error' : undefined}
+              {...register('avatar', avatarUrlValidationRules)}
             />
+            {errors.avatar && (
+              <span className="validation-error" id="managed-profile-avatar-error" role="alert">
+                {errors.avatar.message}
+              </span>
+            )}
           </label>
           <label>
             PIN {editingId ? '(déjalo vacío para conservarlo)' : ''}
             <input
               inputMode="numeric"
-              pattern="[0-9]{4}"
               maxLength="4"
-              value={form.pin}
-              onChange={(event) => setForm((current) => ({
-                ...current,
-                pin: event.target.value.replace(/\D/g, '').slice(0, 4),
-              }))}
-              required={!editingId}
+              aria-invalid={Boolean(errors.pin)}
+              aria-describedby={errors.pin ? 'managed-profile-pin-error' : undefined}
+              {...pinField}
+              onChange={(event) => {
+                event.target.value = event.target.value.replace(/\D/g, '').slice(0, 4)
+                pinField.onChange(event)
+              }}
             />
+            {errors.pin && (
+              <span className="validation-error" id="managed-profile-pin-error" role="alert">
+                {errors.pin.message}
+              </span>
+            )}
           </label>
           {error && <p className="error-message" role="alert">{error}</p>}
           <div className="profile-form-actions">

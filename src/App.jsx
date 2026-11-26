@@ -1,45 +1,27 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { authApi, profilesApi } from './api.js'
 import useCatalog from './hooks/useCatalog.js'
+import useProfiles from './hooks/useProfiles.js'
 import useWatchlist from './hooks/useWatchlist.js'
 import AppRoutes from './routes/AppRoutes.jsx'
 import { getScreenFromPath, ROUTES } from './routes/routeConfig.js'
 import plainText from './utils/plainText.js'
 import { getProfileId } from './utils/profile.js'
+import { readSession, SESSION_KEYS } from './utils/session.js'
+import useUI from './hooks/useUI.js'
 import AuthView from './views/AuthView.jsx'
 import CatalogView from './views/CatalogView.jsx'
 import CreateProfileView from './views/CreateProfileView.jsx'
 import ProfileManagementView from './views/ProfileManagementView.jsx'
 import ProfileSelectionView from './views/ProfileSelectionView.jsx'
 import WatchlistView from './views/WatchlistView.jsx'
-
-const SESSION_KEYS = {
-  account: 'nodo.accountToken',
-  profileToken: 'nodo.profileToken',
-  profile: 'nodo.activeProfile',
-}
-
-function readSession() {
-  const accountToken = localStorage.getItem(SESSION_KEYS.account)
-  const profileToken = localStorage.getItem(SESSION_KEYS.profileToken)
-  let profile = null
-
-  try {
-    profile = JSON.parse(localStorage.getItem(SESSION_KEYS.profile) || 'null')
-  } catch {
-    localStorage.removeItem(SESSION_KEYS.profile)
-  }
-
-  return {
-    accountToken,
-    profileToken,
-    profile,
-  }
-}
+import Footer from './views/partials/Footer.jsx'
 
 function App() {
+  const { error, setError, busy, setBusy, theme, toggleTheme } = useUI()
   const [session, setSession] = useState(readSession)
+  const modalRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
   const screen = getScreenFromPath(location.pathname)
@@ -47,21 +29,22 @@ function App() {
     (destination, options) => navigate(ROUTES[destination], options),
     [navigate],
   )
-  const [profiles, setProfiles] = useState([])
-  const [loadingProfiles, setLoadingProfiles] = useState(
-    () => Boolean(localStorage.getItem(SESSION_KEYS.account)),
-  )
-  const [profilesError, setProfilesError] = useState('')
-  const [profileLoadAttempt, setProfileLoadAttempt] = useState(0)
   const [selectedProfile, setSelectedProfile] = useState(null)
-  const [profilePin, setProfilePin] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [profileName, setProfileName] = useState('')
-  const [bootstrapPin, setBootstrapPin] = useState('')
   const [registering, setRegistering] = useState(false)
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+  const profileState = useProfiles({ session, screen, navigateTo, setSession })
+  const {
+    profiles,
+    replace: replaceProfiles,
+    loading: loadingProfiles,
+    error: profilesError,
+    startLoading: startProfileLoading,
+    retry: retryProfileLoad,
+    resetForAccount: resetProfilesForAccount,
+    clear: clearProfiles,
+    create: createManagedProfile,
+    update: updateManagedProfile,
+    remove: deleteManagedProfile,
+  } = profileState
   const activeProfileId = getProfileId(session.profile)
   const catalog = useCatalog({
     profileToken: session.profileToken,
@@ -84,6 +67,50 @@ function App() {
     resetForProfile,
     clearShows,
   } = catalog
+  const detailsOpen = Boolean(details)
+
+  useEffect(() => {
+    if (!detailsOpen) return undefined
+
+    const previousFocus = document.activeElement
+    const previousOverflow = document.body.style.overflow
+    modalRef.current?.querySelector('.modal-close')?.focus()
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus()
+      }
+    }
+  }, [detailsOpen])
+
+  const handleDetailsKeyDown = (event) => {
+    if (event.key === 'Escape') {
+      closeDetails()
+      return
+    }
+    if (event.key !== 'Tab') return
+
+    const focusable = modalRef.current?.querySelectorAll(
+      'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    )
+    if (!focusable?.length) {
+      event.preventDefault()
+      modalRef.current?.focus()
+      return
+    }
+
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
   const watchlistState = useWatchlist({
     profileToken: session.profileToken,
     profileId: activeProfileId,
@@ -106,12 +133,9 @@ function App() {
     localStorage.setItem(SESSION_KEYS.account, token)
     localStorage.removeItem(SESSION_KEYS.profileToken)
     localStorage.removeItem(SESSION_KEYS.profile)
-    setProfiles([])
+    resetProfilesForAccount()
     resetWatchlists()
     setSelectedProfile(null)
-    setProfilePin('')
-    setLoadingProfiles(true)
-    setProfilesError('')
     setSession({ accountToken: token, profileToken: null, profile: null })
     navigateTo('profiles', { replace: true })
   }
@@ -125,8 +149,7 @@ function App() {
     startWatchlistLoading()
   }
 
-  const handleAuth = async (event) => {
-    event.preventDefault()
+  const handleAuth = async ({ email, password }) => {
     setBusy(true)
     setError('')
     try {
@@ -144,13 +167,12 @@ function App() {
     saveActiveProfile(result.token, result.profile)
   }
 
-  const handleActivateProfile = async (event) => {
-    event.preventDefault()
+  const handleActivateProfile = async ({ pin }) => {
     if (!selectedProfile) return
     setBusy(true)
     setError('')
     try {
-      await activateProfile(selectedProfile, profilePin)
+      await activateProfile(selectedProfile, pin)
     } catch (requestError) {
       setError(requestError.message)
     } finally {
@@ -158,8 +180,7 @@ function App() {
     }
   }
 
-  const handleBootstrap = async (event) => {
-    event.preventDefault()
+  const handleBootstrap = async ({ profileName, bootstrapPin }) => {
     setBusy(true)
     setError('')
     try {
@@ -168,7 +189,7 @@ function App() {
         type: 'adult',
         pin: bootstrapPin,
       })
-      setProfiles([profile])
+      replaceProfiles([profile])
       await activateProfile(profile, bootstrapPin)
     } catch (requestError) {
       setError(requestError.message)
@@ -176,36 +197,6 @@ function App() {
       setBusy(false)
     }
   }
-
-  useEffect(() => {
-    const isProfileSelection = screen === 'profiles'
-    const isProfileManagement = screen === 'manage-profiles'
-    const isProfileCreation = screen === 'create-profile'
-    if (!isProfileSelection && !isProfileManagement && !isProfileCreation) return undefined
-    const token = isProfileManagement ? session.profileToken : session.accountToken
-    if (!token) return undefined
-    let active = true
-
-    profilesApi.list(token)
-      .then((data) => {
-        if (!active) return
-        const list = Array.isArray(data) ? data : []
-        setProfiles(list)
-        if (isProfileSelection && !list.length) {
-          navigateTo('create-profile', { replace: true })
-        } else if (isProfileCreation && list.length) {
-          navigateTo('profiles', { replace: true })
-        }
-      })
-      .catch((requestError) => {
-        if (active) setProfilesError(requestError.message)
-      })
-      .finally(() => {
-        if (active) setLoadingProfiles(false)
-      })
-
-    return () => { active = false }
-  }, [session.accountToken, session.profileToken, screen, profileLoadAttempt, navigateTo])
 
   const logoutProfile = () => {
     localStorage.removeItem(SESSION_KEYS.profileToken)
@@ -217,90 +208,41 @@ function App() {
     }))
     navigateTo('profiles', { replace: true })
     setSelectedProfile(null)
-    setProfilePin('')
     stopWatchlistLoading()
     setError('')
-    setProfilesError('')
-    setLoadingProfiles(true)
-  }
-
-  const retryProfileLoad = () => {
-    setLoadingProfiles(true)
-    setProfilesError('')
-    setProfileLoadAttempt((attempt) => attempt + 1)
-  }
-
-  const createManagedProfile = async (profile) => {
-    const created = await profilesApi.create(session.profileToken, profile)
-    setProfiles((current) => [...current, created])
-  }
-
-  const updateManagedProfile = async (id, updates) => {
-    const updated = await profilesApi.update(session.profileToken, id, updates)
-    setProfiles((current) => current.map((profile) => (
-      String(getProfileId(profile)) === String(id) ? updated : profile
-    )))
-
-    if (String(getProfileId(session.profile)) === String(id)) {
-      localStorage.setItem(SESSION_KEYS.profile, JSON.stringify(updated))
-      setSession((current) => ({
-        ...current,
-        profile: updated,
-      }))
-      if (updated.type !== 'adult' && screen === 'manage-profiles') {
-        navigateTo('catalog', { replace: true })
-      }
-    }
-  }
-
-  const deleteManagedProfile = async (id) => {
-    await profilesApi.remove(session.profileToken, id)
-    setProfiles((current) => current.filter(
-      (profile) => String(getProfileId(profile)) !== String(id),
-    ))
+    startProfileLoading()
   }
 
   const logout = () => {
     Object.values(SESSION_KEYS).forEach((key) => localStorage.removeItem(key))
     setSession({ accountToken: null, profileToken: null, profile: null })
     navigateTo('auth', { replace: true })
-    setProfiles([])
+    clearProfiles()
     resetWatchlists()
     setSelectedProfile(null)
-    setProfilePin('')
     clearShows()
     setError('')
-    setProfilesError('')
-    setLoadingProfiles(false)
   }
 
   const authView = (
     <AuthView
       busy={busy}
-      email={email}
       error={error}
-      onEmailChange={setEmail}
-      onPasswordChange={setPassword}
       onSubmit={handleAuth}
       onToggleRegister={() => {
         setRegistering((value) => !value)
         setError('')
       }}
-      password={password}
       registering={registering}
     />
   )
 
   const createProfileView = (
     <CreateProfileView
-      bootstrapPin={bootstrapPin}
       busy={busy}
       error={error}
-      onBootstrapPinChange={setBootstrapPin}
       onLogout={logout}
-      onProfileNameChange={setProfileName}
       onSubmit={handleBootstrap}
-      profileName={profileName}
     />
   )
 
@@ -313,13 +255,10 @@ function App() {
       onActivate={handleActivateProfile}
       onChooseProfile={(profile) => {
         setSelectedProfile(profile)
-        setProfilePin('')
         setError('')
       }}
       onLogout={logout}
-      onPinChange={setProfilePin}
       onRetry={retryProfileLoad}
-      profilePin={profilePin}
       profiles={profiles}
       profilesError={profilesError}
       selectedProfile={selectedProfile}
@@ -328,6 +267,7 @@ function App() {
 
   const applicationShell = (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Saltar al contenido</a>
       <header className="topbar">
         <a className="brand" href="/" aria-label="Nodo, inicio">NODO<span>+</span></a>
         <nav className="main-nav" aria-label="Navegación principal">
@@ -357,8 +297,7 @@ function App() {
               type="button"
               className={screen === 'manage-profiles' ? 'active' : ''}
               onClick={() => {
-                setLoadingProfiles(true)
-                setProfilesError('')
+                startProfileLoading()
                 navigateTo('manage-profiles')
               }}
             >
@@ -377,7 +316,7 @@ function App() {
         </div>
       </header>
 
-      <main>
+      <main id="main-content">
         {screen === 'catalog' ? (
           <CatalogView
             profileName={session.profile?.name}
@@ -424,19 +363,18 @@ function App() {
         )}
       </main>
 
-      <footer className="site-footer">
-        <a className="brand" href="/" aria-label="Nodo, inicio">NODO<span>+</span></a>
-        <span>Tu próxima historia te está esperando.</span>
-        <span>Catálogo impulsado por TVMaze</span>
-      </footer>
+      <Footer />
 
       {details && (
         <div className="modal-backdrop" role="presentation" onClick={closeDetails}>
           <section
+            ref={modalRef}
             className="details-modal"
             role="dialog"
             aria-modal="true"
             aria-label={details.show?.name || 'Detalles de la serie'}
+            tabIndex="-1"
+            onKeyDown={handleDetailsKeyDown}
             onClick={(event) => event.stopPropagation()}
           >
             <button className="modal-close" type="button" onClick={closeDetails} aria-label="Cerrar">
@@ -485,17 +423,29 @@ function App() {
   )
 
   return (
-    <AppRoutes
-      session={session}
-      authView={authView}
-      profileSelectionView={profileSelectionView}
-      createProfileView={createProfileView}
-      applicationShell={applicationShell}
-      profiles={profiles}
-      loadingProfiles={loadingProfiles}
-      profilesError={profilesError}
-      onRetryProfileLoad={retryProfileLoad}
-    />
+    <>
+      <AppRoutes
+        session={session}
+        authView={authView}
+        profileSelectionView={profileSelectionView}
+        createProfileView={createProfileView}
+        applicationShell={applicationShell}
+        profiles={profiles}
+        loadingProfiles={loadingProfiles}
+        profilesError={profilesError}
+        onRetryProfileLoad={retryProfileLoad}
+      />
+      <button
+        className="theme-toggle"
+        type="button"
+        onClick={toggleTheme}
+        aria-label={`Cambiar a tema ${theme === 'dark' ? 'claro' : 'oscuro'}`}
+        aria-pressed={theme === 'dark'}
+      >
+        <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
+        {theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+      </button>
+    </>
   )
 }
 

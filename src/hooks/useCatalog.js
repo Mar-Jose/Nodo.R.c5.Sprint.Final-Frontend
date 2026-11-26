@@ -25,9 +25,8 @@ export default function useCatalog({ profileToken, screen, setError }) {
     return () => { active = false }
   }, [screen, profileToken, page, setError])
 
-  const handleSearch = async (event) => {
-    event.preventDefault()
-    if (!searchText.trim()) {
+  const handleSearch = async ({ searchText: searchQuery, searchYear: year }) => {
+    if (!searchQuery.trim()) {
       setError('Escribe el nombre de una serie para buscar.')
       return
     }
@@ -37,8 +36,8 @@ export default function useCatalog({ profileToken, screen, setError }) {
     try {
       const result = await catalogApi.search(
         profileToken,
-        searchText.trim(),
-        searchYear,
+        searchQuery.trim(),
+        year,
       )
       setShows(result.results || [])
     } catch (requestError) {

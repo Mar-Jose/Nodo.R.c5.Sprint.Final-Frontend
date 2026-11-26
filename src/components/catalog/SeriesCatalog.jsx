@@ -27,6 +27,7 @@ export default function SeriesCatalog({
           <h2>Descubre series</h2>
         </div>
         <SearchBar
+          key={page}
           onSearch={onSearch}
           onSearchTextChange={onSearchTextChange}
           onSearchYearChange={onSearchYearChange}

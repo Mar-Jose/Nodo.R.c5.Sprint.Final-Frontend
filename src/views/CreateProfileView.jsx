@@ -1,40 +1,62 @@
+import { useForm } from 'react-hook-form'
+import {
+  profileNameValidationRules,
+  requiredPinValidationRules,
+} from '../validations/profiles.js'
+
 export default function CreateProfileView({
-  bootstrapPin,
   busy,
   error,
-  onBootstrapPinChange,
   onLogout,
-  onProfileNameChange,
   onSubmit,
-  profileName,
 }) {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm()
+
+  const pinField = register('bootstrapPin', requiredPinValidationRules)
+
   return (
     <main className="auth-page">
       <a className="brand auth-brand" href="/" aria-label="Nodo, inicio">NODO<span>+</span></a>
-      <form className="auth-card" onSubmit={onSubmit}>
+      <form className="auth-card" onSubmit={handleSubmit(onSubmit)} noValidate>
         <p className="eyebrow">PRIMER PASO</p>
         <h1>Crea tu perfil</h1>
         <p className="muted">Elige un nombre y un PIN de 4 dígitos para protegerlo.</p>
         <label>
           Nombre del perfil
           <input
-            value={profileName}
-            onChange={(event) => onProfileNameChange(event.target.value)}
-            minLength="2"
             maxLength="50"
-            required
+            aria-invalid={Boolean(errors.profileName)}
+            aria-describedby={errors.profileName ? 'create-profile-name-error' : undefined}
+            {...register('profileName', profileNameValidationRules)}
           />
+          {errors.profileName && (
+            <span className="validation-error" id="create-profile-name-error" role="alert">
+              {errors.profileName.message}
+            </span>
+          )}
         </label>
         <label>
           PIN
           <input
             inputMode="numeric"
-            pattern="[0-9]{4}"
             maxLength="4"
-            value={bootstrapPin}
-            onChange={(event) => onBootstrapPinChange(event.target.value.replace(/\D/g, '').slice(0, 4))}
-            required
+            aria-invalid={Boolean(errors.bootstrapPin)}
+            aria-describedby={errors.bootstrapPin ? 'create-profile-pin-error' : undefined}
+            {...pinField}
+            onChange={(event) => {
+              event.target.value = event.target.value.replace(/\D/g, '').slice(0, 4)
+              pinField.onChange(event)
+            }}
           />
+          {errors.bootstrapPin && (
+            <span className="validation-error" id="create-profile-pin-error" role="alert">
+              {errors.bootstrapPin.message}
+            </span>
+          )}
         </label>
         {error && <p className="error-message" role="alert">{error}</p>}
         <button className="primary-button full-width" type="submit" disabled={busy}>

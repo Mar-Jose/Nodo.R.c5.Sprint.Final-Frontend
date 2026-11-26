@@ -1,37 +1,65 @@
+import axios, { AxiosHeaders } from 'axios'
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const apiClient = axios.create({ baseURL: API_URL })
 
-export async function apiRequest(path, { token, ...options } = {}) {
-  const headers = new Headers(options.headers)
+function getApiError(payload, status) {
+  const validationErrors = Array.isArray(payload.errores)
+    ? payload.errores
+      .map(({ campo, mensaje }) => `${campo}: ${mensaje}`)
+      .join('. ')
+    : ''
 
-  if (options.body && !headers.has('Content-Type')) {
+  return new Error(
+    validationErrors
+    || payload.mensaje
+    || `Error del servidor (${status}).`,
+  )
+}
+
+export async function apiRequest(path, { token, body, ...options } = {}) {
+  const headers = new AxiosHeaders(options.headers)
+
+  if (body !== undefined && body !== null && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`)
-  }
+  if (token) headers.set('Authorization', `Bearer ${token}`)
 
-  let response
   try {
-    response = await fetch(`${API_URL}${path}`, { ...options, headers })
-  } catch {
-    throw new Error(`No se pudo conectar con el backend en ${API_URL}. Comprueba que esté iniciado.`)
-  }
+    const response = await apiClient.request({
+      ...options,
+      url: path,
+      data: body,
+      headers,
+    })
+    const { data: payload, status } = response
 
-  let payload
-  try {
-    payload = await response.json()
-  } catch {
-    throw new Error(`El backend respondió con un formato inesperado (${response.status}).`)
-  }
+    if (!payload || typeof payload !== 'object') {
+      throw new Error(`El backend respondió con un formato inesperado (${status}).`)
+    }
+    if (payload.estado === 'error') throw getApiError(payload, status)
 
-  if (!response.ok || payload.estado === 'error') {
-    const validationErrors = payload.errores
-      ?.map(({ campo, mensaje }) => `${campo}: ${mensaje}`)
-      .join('. ')
-    throw new Error(validationErrors || payload.mensaje || `Error del servidor (${response.status}).`)
-  }
+    return payload.datos
+  } catch (requestError) {
+    if (!axios.isAxiosError(requestError)) throw requestError
 
-  return payload.datos
+    if (!requestError.response) {
+      throw new Error(
+        `No se pudo conectar con el backend en ${API_URL}. Comprueba que esté iniciado.`,
+        { cause: requestError },
+      )
+    }
+
+    const { data: payload, status } = requestError.response
+    if (!payload || typeof payload !== 'object') {
+      throw new Error(
+        `El backend respondió con un formato inesperado (${status}).`,
+        { cause: requestError },
+      )
+    }
+
+    throw getApiError(payload, status)
+  }
 }
 
 export const authApi = {
