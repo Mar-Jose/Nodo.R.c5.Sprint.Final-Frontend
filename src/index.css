@@ -1291,6 +1291,13 @@ select:focus-visible {
 
   .main-nav button {
     font-size: 11px;
+    min-height: 44px;
+  }
+
+  .user-menu .text-button,
+  .managed-profile .text-button {
+    min-height: 44px;
+    padding: 8px;
   }
 
   .profile-management-full-label {
@@ -1393,7 +1400,7 @@ select:focus-visible {
   .site-footer {
     flex-wrap: wrap;
     gap: 8px 16px;
-    padding: 20px 5%;
+    padding: 20px 5% 68px;
   }
 
   .site-footer .brand {
@@ -1425,7 +1432,7 @@ select:focus-visible {
   }
 
   .main-nav button {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .brand {
